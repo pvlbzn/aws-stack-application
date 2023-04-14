@@ -1,5 +1,7 @@
 #!/bin/bash
 
+echo -e "Deploying main.yaml"
+
 STACK_NAME=awsbootstrap
 REGION=us-east-1
 CLI_PROFILE=default
@@ -7,12 +9,19 @@ CLI_PROFILE=default
 EC2_INSTANCE_TYPE=t2.micro
 
 # Programmatically get the AWS account ID from the AWS CLI
-AWS_ACCOUNT_ID=`aws sts get-caller-identity --profile awsbootstrap \
+AWS_ACCOUNT_ID=`aws sts get-caller-identity --profile default \
   --query "Account" --output text`
 CODEPIPELINE_BUCKET="$STACK_NAME-$REGION-codepipeline-$AWS_ACCOUNT_ID"
 
-# Deploy the CloudFormation template
-echo -e "\n\n=========== Deploying main.yml ==========="
+echo -e "AWS Account ID: ${AWS_ACCOUNT_ID}"
+echo -e "AWS CodePipeline bucket name: ${CODEPIPELINE_BUCKET}"
+
+GH_ACCESS_TOKEN=$(cat ~/.github/aws-bootstrap-access-token)
+GH_OWNER=$(cat ~/.github/aws-bootstrap-owner)
+GH_REPO=$(cat ~/.github/aws-bootstrap-repo)
+GH_BRANCH=main
+
+echo -e "Deploying S3 AWS CloudFormation bucket"
 
 # Deploy S3
 aws cloudformation deploy \
@@ -22,8 +31,10 @@ aws cloudformation deploy \
   --template-file setup.yaml \
   --no-fail-on-empty-changeset \
   --capabilities CAPABILITY_NAMED_IAM \
-  --parameters-overrides \
+  --parameter-overrides \
     CodePipelineBucket=$CODEPIPELINE_BUCKET
+
+echo -e "Deploying AWS infrastructure"
 
 # Deploy infra
 aws cloudformation deploy \
@@ -35,6 +46,11 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
     EC2InstanceType=$EC2_INSTANCE_TYPE \
+    GitHubOwner=$GH_OWNER \
+    GitHubRepo=$GH_REPO \
+    GitHubBranch=$GH_BRANCH \
+    GitHubPersonalAccessToken=$GH_ACCESS_TOKEN \
+    CodePipelineBucket=$CODEPIPELINE_BUCKET
 
 # If the deploy succeeded, show the DNS name of the created instance
 if [ $? -eq 0 ]; then
