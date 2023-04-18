@@ -111,7 +111,7 @@ Resources:
           cat > /tmp/install_script.sh << EOF
             # Start
             echo "setting up nodejs env"
-            curl https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash 
+            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash
 
             # Dot source the files so variables will be available in current env
             . /home/ec2-user/.nvm/nvm.sh
@@ -127,14 +127,13 @@ Resources:
           EOF
 
           chown ec2-user:ec2-user /tmp/install_script.sh && chmod a+x /tmp/install_script.sh
-          sleep 1; su - ec2-user -c "/tmp/install_script.sh"
+          sleep 5; su - ec2-user -c "/tmp/install_script.sh"
 
           # Install CF metadata
           /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance
 
           # Signal back to CF that the instance is ready
           /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --region ${AWS::Region} --resource Instance
-
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
@@ -254,7 +253,7 @@ Resources:
         SecretToken: !Ref GitHubPersonalAccessToken
       Filters:
         - JsonPath: $.ref
-          MatchEquals: 'refs/head/{Branch}'
+          MatchEquals: 'refs/heads/{Branch}'
       TargetPipeline: !Ref Pipeline
       TargetAction: Source
       Name: !Sub 'webhook-${AWS::StackName}'
@@ -262,8 +261,8 @@ Resources:
       RegisterWithThirdParty: true
 
 Outputs:
-  InstanceDNS:
+  InstanceEndpoint:
     Description: The DNS name for the created instance
     Value: !Sub "http://${Instance.PublicDnsName}:8080"
     Export:
-      Name: InstanceDNS
+      Name: InstanceEndpoint
