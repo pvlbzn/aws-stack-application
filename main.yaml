@@ -239,37 +239,64 @@ Resources:
       RouteTableId: !Ref RouteTable
       SubnetId: !Ref SubnetAZ2
 
-  Instance:
-    Type: AWS::EC2::Instance
-    CreationPolicy:
-      ResourceSignal:
-        Timeout: PT5M
-        Count: 1
+  ScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    UpdatePolicy:
+      AutoScalingRollingUpdate:
+        MinInstanceInService: "1"
+        MaxBatchSize: "1"
+        PauseTime: "PT15M"
+        # Launch script will get the ASGs logical ID when querying
+        # its tag, and will pass that to the `cfn-signal` command,
+        # which will signal to the ASG that the instance has launched
+        # successfully.
+        WaitOnResourceSignals: "true"
+        SuspendProcesses:
+          - HeatlhCheck
+          - ReplaceUnhealthy
+          - AZRebalance
+          - AlarmNotifications
+          - ScheduledActions
     Properties:
-      # Put instance in subnet 1
-      SubnetId: !Ref SubnetAZ1
+      AutoScalingGroupName: !Sub 'ASG_${AWS::StackName}'
+      AvailabilityZones:
+        - !Select [ 0, !GetAZs '' ]
+        - !Select [ 1, !GetAZs '' ]
+      #
+      # Important: those numbers can't be changed in AWS UI otherwise
+      # CF routine will fail.
+      #  
+      # Minimum 2 instances because of two availability zones, lower bound
+      MinSize: 2
+      # Maximum count of instances, upper bound
+      MaxSize: 6
+      HealthCheckGracePeriod: 0
+      # ASG will use load balancer's health check to assess the health
+      # of its instances.
+      HealthCheckType: ELB
       LaunchTemplate:
-        LaunchTemplateId: !Ref InstanceLaunchTemplate
+        # All instances will be created as per launch template.
         Version: !GetAtt InstanceLaunchTemplate.LatestVersionNumber
+        LaunchTemplateId: !Ref InstanceLaunchTemplate
+      TargetGroupARNs:
+        # ASG will add all launched instances to the load balancer's target group.
+        - !Ref LoadBalancerTargetGroup
+      MetricsCollection:
+        - 
+          Granularity: "1Minute"
+          Metrics:
+            - "GroupMaxSize"
+            - "GroupInServiceInstances"
+      # VPC groups where instances will be launched
+      VPCZoneIdentifier:
+        - !Ref SubnetAZ1
+        - !Ref SubnetAZ2
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
-
-  Instance2:
-    Type: AWS::EC2::Instance
-    CreationPolicy:
-      ResourceSignal:
-        Timeout: PT5M
-        Count: 1
-    Properties:
-      # Put instance in subnet 2
-      SubnetId: !Ref SubnetAZ2
-      LaunchTemplate:
-        LaunchTemplateId: !Ref InstanceLaunchTemplate
-        Version: !GetAtt InstanceLaunchTemplate.LatestVersionNumber
-      Tags:
-        - Key: Name
-          Value: !Ref AWS::StackName
+          # Ensures that this tag will be copied to all instances
+          # that are launched as the part of this ASG.
+          PropagateAtLaunch: "true"
 
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
@@ -308,9 +335,6 @@ Resources:
       VpcId: !Ref VPC
       HealthCheckEnabled: true
       HealthCheckProtocol: HTTP
-      Targets:
-        - Id: !Ref Instance
-        - Id: !Ref Instance2
       Tags:
         - Key: Name
           Value: !Ref AWS::StackName
@@ -352,20 +376,18 @@ Resources:
       # Here `Server` means EC2
       ComputePlatform: Server
   
+  # This makes ASG to tell CodeDeploy to deploy our application
+  # to every new instance that gets added to the ASG.
   StagingDeploymentGroup:
     Type: AWS::CodeDeploy::DeploymentGroup
-    DependsOn: Instance
     Properties:
       DeploymentGroupName: staging
+      AutoScalingGroups:
+        - !Ref ScalingGroup
       ApplicationName: !Ref DeploymentApplication
       DeploymentConfigName: CodeDeployDefault.AllAtOnce
       ServiceRoleArn: !GetAtt DeploymentRole.Arn
-      # CodeDeploy will find the EC2 instance to deploy to
-      Ec2TagFilters:
-        - Key: aws:cloudformation:stack-name
-          Type: KEY_AND_VALUE
-          Value: !Ref AWS::StackName
-    
+
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
@@ -438,18 +460,6 @@ Resources:
       RegisterWithThirdParty: true
 
 Outputs:
-  InstanceEndpoint:
-    Description: The DNS name for the created instance
-    Value: !Sub "http://${Instance.PublicDnsName}:8080"
-    Export:
-      Name: InstanceEndpoint
-
-  InstanceEndpoint2:
-    Description: The DNS name for the created instance
-    Value: !Sub "http://${Instance2.PublicDnsName}:8080"
-    Export:
-      Name: InstanceEndpoint2
-  
   LBEndpoint:
     Description: DNS name for the Load Balancer
     Value: !Sub "http://${LoadBalancer.DNSName}:80"
