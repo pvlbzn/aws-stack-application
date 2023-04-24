@@ -23,6 +23,11 @@ Parameters:
     Type: String
     NoEcho: true
     Description: "Personal access token of GitHub."
+  Domain:
+    Type: String
+  Certificate:
+    Type: String
+    Description: 'An existing ACM certificate ARN for the $DOMAIN'
 
 Resources:
   DeploymentRole:
@@ -177,6 +182,9 @@ Resources:
       Parameters:
         EC2InstanceType: !Ref EC2InstanceType
         EC2AMI: !Ref EC2AMI
+        Domain: !Ref Domain
+        SubDomain: staging
+        Certificate: !Ref Certificate
   
   Prod:
     Type: AWS::CloudFormation::Stack
@@ -187,16 +195,19 @@ Resources:
       Parameters:
         EC2InstanceType: !Ref EC2InstanceType
         EC2AMI: !Ref EC2AMI
+        Domain: !Ref Domain
+        SubDomain: prod
+        Certificate: !Ref Certificate
 
 Outputs:
-  StagingLBEndpoint:
+  StagingHTTPSLBEndpoint:
     Description: DNS name for the Staging Load Balancer
-    Value: !GetAtt Staging.Outputs.LBEndpoint
+    Value: !GetAtt Staging.Outputs.HTTPSEndpoint
     Export:
-      Name: StagingLBEndpoint
+      Name: StagingHTTPSLBEndpoint
   
-  ProdLBEndpoint:
+  ProdHTTPSLBEndpoint:
     Description: DNS name for the Production Load Balancer
-    Value: !GetAtt Prod.Outputs.LBEndpoint
+    Value: !GetAtt Prod.Outputs.HTTPSEndpoint
     Export:
-      Name: ProdLBEndpoint
+      Name: ProdHTTPSLBEndpoint

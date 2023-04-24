@@ -8,15 +8,23 @@ CLI_PROFILE=default
 
 EC2_INSTANCE_TYPE=t2.micro
 
+# HTTPS
+DOMAIN=aws.edbase.app
+CERT=`aws acm list-certificates --region $REGION --profile $CLI_PROFILE --output text \
+  --query "CertificateSummaryList[?DomainName=='$DOMAIN'].CertificateArn | [0]"`
+
 # Programmatically get the AWS account ID from the AWS CLI
 AWS_ACCOUNT_ID=`aws sts get-caller-identity --profile default \
   --query "Account" --output text`
+
+# S3 buckets
 CODEPIPELINE_BUCKET="$STACK_NAME-$REGION-codepipeline-$AWS_ACCOUNT_ID"
 CFN_BUCKET="$STACK_NAME-cfn-$AWS_ACCOUNT_ID"
 
 echo -e "AWS Account ID: ${AWS_ACCOUNT_ID}"
 echo -e "AWS CodePipeline bucket name: ${CODEPIPELINE_BUCKET}"
 echo -e "CFN bucket: ${CFN_BUCKET}"
+echo -e "Certificate ARN: ${CERT}"
 
 GH_ACCESS_TOKEN=$(cat ~/.github/aws-bootstrap-access-token)
 GH_OWNER=$(cat ~/.github/aws-bootstrap-owner)
@@ -64,6 +72,8 @@ aws cloudformation deploy \
   --capabilities CAPABILITY_NAMED_IAM \
   --parameter-overrides \
     EC2InstanceType=$EC2_INSTANCE_TYPE \
+    Domain=$DOMAIN \
+    Certificate=$CERT \
     GitHubOwner=$GH_OWNER \
     GitHubRepo=$GH_REPO \
     GitHubBranch=$GH_BRANCH \

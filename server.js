@@ -1,16 +1,29 @@
 const { hostname } = require("os")
-const http = require("http")
+const https = require("https")
+const fs = require("fs")
 
 const STACK_NAME = process.env.STACK_NAME || "unknown stack"
-const message = `Hey from ${hostname()} in ${STACK_NAME}\n`
-const port = 8080
+const httpsPort = 8443
+const httpsKey = "../keys/key.pem"
+const httpsCert = "../keys/cert.pem"
 
-const server = http.createServer((req, res) => {
-  res.statusCode = 200
-  res.setHeader("Content-Type", "text/plain")
-  res.end(message)
-})
+if (fs.existsSync(httpsKey) && fs.existsSync(httpsCert)) {
+  console.log("Starting HTTPS server")
 
-server.listen(port, hostname, () => {
-  console.log(`server running at http://${hostname()}:${port}/`)
-})
+  const message = `HTTPS hey from ${hostname()} in ${STACK_NAME}\n`
+  const options = {
+    key: fs.readFileSync(httpsKey),
+    cert: fs.readFileSync(httpsCert)
+  }
+  const server = https.createServer(options, (req, res) => {
+    res.statusCode = 200
+    res.setHeader("Content-Type", "text/plain")
+    res.end(message)
+  })
+
+  server.listen(httpsPort, hostname, () => {
+    console.log(`server running at https://${hostname()}:${httpsPort}/`)
+  })
+} else {
+  console.log("failed to find certificate and/or key")
+}
